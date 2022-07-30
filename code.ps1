@@ -56,30 +56,18 @@ function Write-VMInformation {
     $publicIps = Get-AzPublicIpAddress
 
     # Collect VM + NIC information
-    foreach ($nic in $nics) {
-        $info = "" | Select-Object VmName, ResourceGroupName, Region, VmSize, VirtualNetwork, Subnet, PrivateIpAddress, OsType, PublicIPAddress, NicName, ApplicationSecurityGroup, ID, MAC, InternalDNS, OSDiskSpace
-        $vm = $vms | Where-Object -Property Id -EQ $nic.VirtualMachine.id
-        foreach ($publicIp in $publicIps) {
-            if ($nic.IpConfigurations.id -eq $publicIp.ipconfiguration.Id) {
-                $info.PublicIPAddress = $publicIp.ipaddress
-            }
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $nics | ForEach-Object -parallel {
+            $report += (Invoke-VMArray -vms $vms -publicIps $publicIps -nic $_)
         }
-        $info.OsType = $vm.StorageProfile.OsDisk.OsType
-        $info.VMName = $vm.Name
-        $info.ResourceGroupName = $vm.ResourceGroupName
-        $info.Region = $vm.Location
-        $info.VmSize = $vm.HardwareProfile.VmSize
-        $info.VirtualNetwork = $nic.IpConfigurations.subnet.Id.Split("/")[-3]
-        $info.Subnet = $nic.IpConfigurations.subnet.Id.Split("/")[-1]
-        $info.PrivateIpAddress = $nic.IpConfigurations.PrivateIpAddress -join ','
-        $info.NicName = $nic.Name -join ','
-        $info.ApplicationSecurityGroup = $nic.IpConfigurations.ApplicationSecurityGroups.Id
-        $info.ID = $vm.Id
-        $info.MAC = $nic.MacAddress -join ','
-        $info.InternalDNS = $nic.DnsSettings.InternalDomainNameSuffix
-        $info.OSDiskSpace = (Invoke-RunCommand -rg $vm.ResourceGroupName -vmName $vm.Name -osVersion $vm.StorageProfile.OsDisk.OsType)
-        $report += $info
     }
+    else {
+        foreach ($nic in $nics) {
+            $report += (Invoke-VMArray -vms $vms -publicIps $publicIps -nic $nic)
+        }
+    }
+
+
     $report | Format-Table VmName, ResourceGroupName, Region, VmSize, VirtualNetwork, Subnet, PrivateIpAddress, OsType, PublicIPAddress, NicName, ApplicationSecurityGroup, ID, MAC, InternalDNS, OSDiskSpace -AutoSize
     $report | Export-Csv $reportName -NoTypeInformation -Force
     Write-Output "Saved to $((Get-Item $reportName).FullName)"
@@ -112,4 +100,35 @@ function Invoke-RunCommand {
     catch {
         return $_.ToString().Split("`n")[0]
     }
+}
+
+function Invoke-VMArray {
+    param(
+        [Parameter(Mandatory = $true)][Object[]]$vms,
+        [Parameter(Mandatory = $true)][Object[]]$publicIps,
+        [Parameter(Mandatory = $true)][Object]$nic
+    )
+
+    $info = "" | Select-Object VmName, ResourceGroupName, Region, VmSize, VirtualNetwork, Subnet, PrivateIpAddress, OsType, PublicIPAddress, NicName, ApplicationSecurityGroup, ID, MAC, InternalDNS, OSDiskSpace
+    $vm = $vms | Where-Object -Property Id -EQ $nic.VirtualMachine.id
+    foreach ($publicIp in $publicIps) {
+        if ($nic.IpConfigurations.id -eq $publicIp.ipconfiguration.Id) {
+            $info.PublicIPAddress = $publicIp.ipaddress
+        }
+    }
+    $info.OsType = $vm.StorageProfile.OsDisk.OsType
+    $info.VMName = $vm.Name
+    $info.ResourceGroupName = $vm.ResourceGroupName
+    $info.Region = $vm.Location
+    $info.VmSize = $vm.HardwareProfile.VmSize
+    $info.VirtualNetwork = $nic.IpConfigurations.subnet.Id.Split("/")[-3]
+    $info.Subnet = $nic.IpConfigurations.subnet.Id.Split("/")[-1]
+    $info.PrivateIpAddress = $nic.IpConfigurations.PrivateIpAddress -join ','
+    $info.NicName = $nic.Name -join ','
+    $info.ApplicationSecurityGroup = $nic.IpConfigurations.ApplicationSecurityGroups.Id
+    $info.ID = $vm.Id
+    $info.MAC = $nic.MacAddress -join ','
+    $info.InternalDNS = $nic.DnsSettings.InternalDomainNameSuffix
+    $info.OSDiskSpace = (Invoke-RunCommand -rg $vm.ResourceGroupName -vmName $vm.Name -osVersion $vm.StorageProfile.OsDisk.OsType)
+    return $info
 }
