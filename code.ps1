@@ -19,7 +19,7 @@
 	Write-VMInformation -rg ubuntu_group
 
 .LINK
-	https://github.com/rjmccallumbigl/PowerShell-Ping-Test
+	https://github.com/rjmccallumbigl/Azure-PowerShell---Collect-details-about-all-VMs-in-a-subscription/blob/main/code.ps1
 .NOTES
     Author: Ryan McCallum
 	TODO: Add parallel deployment functionality if PS 7+ is detected
